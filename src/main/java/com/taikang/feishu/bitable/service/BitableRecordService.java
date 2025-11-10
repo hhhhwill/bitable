@@ -15,50 +15,50 @@ import java.util.List;
 
 @Service
 public class BitableRecordService {
-
     private static final Logger log = LoggerFactory.getLogger(BitableRecordService.class);
 
     @Autowired
     private Client client;
 
-    /**
-     * 批量向指定数据表写入记录
-     *
-     * @param appToken 多维表格 App Token
-     * @param tableId  数据表 ID
-     * @param records  要写入的记录列表 (每条记录是一个 Map)
-     * @return 批量创建的结果
-     * @throws Exception API 调用异常
-     */
-    public BatchCreateAppTableRecordResp batchCreateRecords(String appToken, String tableId, List<AppTableRecord> records) throws Exception {
-        
-        // 1. 飞书 API 批量写入一次最多 500 条, 你可能需要在这里添加分页逻辑
-        //    (为保持示例简洁, 这里假设 records.size() <= 500)
-        
-        // 2. 准备请求体
-        BatchCreateAppTableRecordReqBody reqBody = BatchCreateAppTableRecordReqBody.newBuilder()
-                .records(records)
-                .build();
+    // 在 BitableRecordService.java 中
+    public void batchCreateRecords(String appToken, String tableId, List<AppTableRecord> records) throws Exception {
 
-        // 3. 准备请求
-        BatchCreateAppTableRecordReq req = BatchCreateAppTableRecordReq.newBuilder()
-                .appToken(appToken)
-                .tableId(tableId)
-                .batchCreateAppTableRecordReqBody(reqBody)
-                .build();
+        final int PAGE_SIZE = 500;
+        int totalSize = records.size();
 
-        // 4. 发起请求
-        log.info("开始向 TableId: {} 批量写入 {} 条记录", tableId, records.size());
-        BatchCreateAppTableRecordResp resp = client.bitable().appTableRecord().batchCreate(req);
+        for (int fromIndex = 0; fromIndex < totalSize; fromIndex += PAGE_SIZE) {
+            int toIndex = Math.min(fromIndex + PAGE_SIZE, totalSize);
+            List<AppTableRecord> subList = records.subList(fromIndex, toIndex);
 
-        // 5. 处理响应
-        if (!resp.success()) {
-            log.error("批量写入记录失败, code:{}, msg:{}, reqId:{}",
-                    resp.getCode(), resp.getMsg(), resp.getRequestId());
-            throw new BitableApiException(resp.getCode(), resp.getMsg(), resp.getRequestId());
+            // --- 准备请求体 (使用子列表) ---
+            BatchCreateAppTableRecordReqBody reqBody = BatchCreateAppTableRecordReqBody.newBuilder()
+                    .records(subList.toArray(new AppTableRecord[0])) // 同样进行修正
+                    .build();
+
+            BatchCreateAppTableRecordReq req = BatchCreateAppTableRecordReq.newBuilder()
+                    .appToken(appToken)
+                    .tableId(tableId)
+                    .batchCreateAppTableRecordReqBody(reqBody)
+                    .build();
+
+            // --- 发起分页请求 ---
+            log.info("开始向 TableId: {} 批量写入 {} 条记录 ({} - {})", tableId, subList.size(), fromIndex, toIndex - 1);
+            BatchCreateAppTableRecordResp resp = client.bitable().appTableRecord().batchCreate(req);
+
+            if (!resp.success()) {
+                log.error("批量写入记录失败 ({} - {}), code:{}, msg:{}, reqId:{}",
+                        fromIndex, toIndex - 1, resp.getCode(), resp.getMsg(), resp.getRequestId());
+                // 抛出异常，中断后续分页
+                throw new BitableApiException(resp.getCode(), resp.getMsg(), resp.getRequestId());
+            }
+
+            log.info("批量写入记录成功 ({} - {})", fromIndex, toIndex - 1);
+
+            // (可选) 增加短暂休眠，防止API频率超限
+            // Thread.sleep(500);
         }
 
-        log.info("批量写入记录成功");
-        return resp;
+        log.info("全部 {} 条记录批量写入完成", totalSize);
+        // 注意：此方法现在可以改为 void，或者返回最后一个 Resp
     }
 }
