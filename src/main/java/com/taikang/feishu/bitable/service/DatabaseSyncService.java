@@ -14,6 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.ResultSet;
 import java.sql.Types;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.SQLException;
+import org.springframework.jdbc.core.ConnectionCallback;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -78,21 +82,34 @@ public class DatabaseSyncService {
      * 辅助方法: 读取数据库表结构
      */
     private List<AppTableField> readTableFields(String dbTableName) {
-        return jdbcTemplate.execute((DatabaseMetaDataCallback<List<AppTableField>>) metaData -> {
+
+        // --- 修正点 ---
+        // jdbcTemplate.execute() 需要一个 ConnectionCallback
+        return jdbcTemplate.execute((ConnectionCallback<List<AppTableField>>) con -> {
             List<AppTableField> fields = new ArrayList<>();
-            try (ResultSet rs = metaData.getColumns(null, null, dbTableName, null)) {
-                while (rs.next()) {
-                    String columnName = rs.getString("COLUMN_NAME");
-                    int dataType = rs.getInt("DATA_TYPE");
-                    
-                    // 字段类型映射
-                    int fieldType = (int) mapSqlTypeToBitableType(dataType);
-                    
-                    fields.add(AppTableField.newBuilder()
-                            .fieldName(columnName)
-                            .type(fieldType)
-                            .build());
+            try {
+                // 1. 从 Connection 中获取 DatabaseMetaData
+                DatabaseMetaData metaData = con.getMetaData();
+
+                // 2. 使用 metaData (您的原始逻辑)
+                try (ResultSet rs = metaData.getColumns(null, null, dbTableName, null)) {
+                    while (rs.next()) {
+                        String columnName = rs.getString("COLUMN_NAME");
+                        int dataType = rs.getInt("DATA_TYPE");
+
+                        // 字段类型映射
+                        int fieldType = mapSqlTypeToBitableType(dataType); // 确保返回值是 long
+
+                        fields.add(AppTableField.newBuilder()
+                                .fieldName(columnName)
+                                .type(fieldType)
+                                .build());
+                    }
                 }
+            } catch (SQLException e) {
+                // 在 Lambda 表达式中, 建议抛出运行时异常
+                log.error("读取数据库元数据失败, 表名: {}", dbTableName, e);
+                throw new RuntimeException("无法读取数据库元数据: " + e.getMessage(), e);
             }
             return fields;
         });
@@ -130,24 +147,24 @@ public class DatabaseSyncService {
      * 辅助方法: 映射 SQL 类型到飞书字段类型
      * (这是一个简化的示例)
      */
-    private long mapSqlTypeToBitableType(int sqlType) {
+    private int mapSqlTypeToBitableType(int sqlType) {
         switch (sqlType) {
             case Types.INTEGER:
             case Types.BIGINT:
             case Types.FLOAT:
             case Types.DOUBLE:
             case Types.DECIMAL:
-                return 2L; // 类型 2: 数字
-            
+                return 2; // 类型 2: 数字
+
             case Types.DATE:
             case Types.TIMESTAMP:
-                return 5L; // 类型 5: 日期
-                
+                return 5; // 类型 5: 日期
+
             case Types.VARCHAR:
             case Types.CHAR:
             case Types.LONGVARCHAR:
             default:
-                return 1L; // 类型 1: 文本
+                return 1; // 类型 1: 文本
         }
     }
 
