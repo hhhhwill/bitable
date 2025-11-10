@@ -20,7 +20,6 @@ public class BitableRecordService {
     @Autowired
     private Client client;
 
-    // 在 BitableRecordService.java 中
     public void batchCreateRecords(String appToken, String tableId, List<AppTableRecord> records) throws Exception {
 
         final int PAGE_SIZE = 500;
@@ -59,6 +58,5 @@ public class BitableRecordService {
         }
 
         log.info("全部 {} 条记录批量写入完成", totalSize);
-        // 注意：此方法现在可以改为 void，或者返回最后一个 Resp
     }
 }

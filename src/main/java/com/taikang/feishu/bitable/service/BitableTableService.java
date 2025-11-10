@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList; // 导入 ArrayList
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -30,13 +30,11 @@ public class BitableTableService {
      */
     public CreateAppTableRespBody createTableWithFields(String appToken, String tableName, List<AppTableField> fields) throws Exception {
 
-        // --- 修正错误 1: ---
-        // 将 [AppTableField] 转换为 [AppTableCreateHeader]
         List<AppTableCreateHeader> headers = new ArrayList<>();
         for (AppTableField field : fields) {
             headers.add(AppTableCreateHeader.newBuilder()
-                    .fieldName(field.getFieldName()) // 从 AppTableField 获取名称
-                    .type(field.getType())      // 从 AppTableField 获取类型
+                    .fieldName(field.getFieldName())
+                    .type(field.getType())
                     .build());
         }
 
@@ -44,14 +42,13 @@ public class BitableTableService {
         // ReqTable.Builder 自身就包含了 .fields() 方法
         ReqTable tableConfig = ReqTable.newBuilder()
                 .name(tableName)
-                // .fields() 方法需要 AppTableCreateHeader[] 数组
-                .fields(headers.toArray(new AppTableCreateHeader[0])) // 传入转换后的 headers
+                .fields(headers.toArray(new AppTableCreateHeader[0]))
                 .build();
 
         // 2. 准备 CreateAppTableReqBody
         // .table() 方法需要一个 ReqTable 对象
         CreateAppTableReqBody reqBody = CreateAppTableReqBody.newBuilder()
-                .table(tableConfig) // 将 ReqTable 对象传入
+                .table(tableConfig)
                 .build();
 
         // 3. 准备完整的请求
@@ -69,12 +66,9 @@ public class BitableTableService {
         if (!resp.success()) {
             log.error("创建数据表失败, code:{}, msg:{}, reqId:{}",
                     resp.getCode(), resp.getMsg(), resp.getRequestId());
-            // 抛出自定义异常
             throw new BitableApiException(resp.getCode(), resp.getMsg(), resp.getRequestId());
         }
 
-        // --- 修正错误 2: ---
-        // CreateAppTableRespBody 直接包含 tableId, 没有 .getTable() 方法
         log.info("创建数据表成功, tableId: {}", resp.getData().getTableId());
         return resp.getData();
     }
