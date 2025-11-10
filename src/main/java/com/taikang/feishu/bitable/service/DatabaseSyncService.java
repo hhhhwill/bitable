@@ -79,7 +79,7 @@ public class DatabaseSyncService {
                         int dataType = rs.getInt("DATA_TYPE");
 
                         // 字段类型映射
-                        int fieldType = mapSqlTypeToBitableType(dataType); // 确保返回值是 long
+                        int fieldType = mapSqlTypeToBitableType(dataType);
 
                         fields.add(AppTableField.newBuilder()
                                 .fieldName(columnName)

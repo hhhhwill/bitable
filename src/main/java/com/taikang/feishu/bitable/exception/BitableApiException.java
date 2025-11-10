@@ -34,7 +34,6 @@ public class BitableApiException extends RuntimeException {
 
     @Override
     public String getMessage() {
-        // 重写 getMessage 方法, 提供更详细的错误信息
         return String.format("Bitable API Error: [code=%d, msg=%s, logId=%s]",
                 this.code, super.getMessage(), this.logId);
     }

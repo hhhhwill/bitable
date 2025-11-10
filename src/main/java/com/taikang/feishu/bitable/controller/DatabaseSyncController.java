@@ -1,6 +1,5 @@
 package com.taikang.feishu.bitable.controller;
 
-// --- 修正点 1: 导入正确的 App 类型 ---
 import com.lark.oapi.service.bitable.v1.model.App;
 import com.taikang.feishu.bitable.service.BitableAppService;
 import com.taikang.feishu.bitable.service.DatabaseSyncService;
@@ -16,7 +15,6 @@ import java.util.Map;
 
 /**
  * 用于管理飞书多维表格 App 和 Table 的 Controller
- * (重构了逻辑, 分离了 App 和 Table 的创建)
  */
 @RestController
 @RequestMapping("/api/bitable") // 修改了基础路径, 更清晰
