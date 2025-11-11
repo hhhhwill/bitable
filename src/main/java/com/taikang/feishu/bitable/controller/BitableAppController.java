@@ -26,7 +26,7 @@ public class BitableAppController {
      * @param userAccessToken (可选) 如果提供, 则以此用户身份创建
      * @return 包含新 appToken 和 url 的 JSON 响应
      */
-    @PostMapping("/api/bitable/app/")
+    @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createBitableApp(
             @RequestParam String documentName,
             @RequestParam(required = false, defaultValue = "") String folderToken,
@@ -50,9 +50,4 @@ public class BitableAppController {
     }
 
     // TODO: 在这里添加您未来的 "复制App"、"获取App元数据" 等 API
-    // @GetMapping("/{appToken}")
-    // public ResponseEntity<?> getAppMetadata(@PathVariable String appToken) { ... }
-
-    // @PostMapping("/{appToken}/copy")
-    // public ResponseEntity<?> copyApp(@PathVariable String appToken) { ... }
 }

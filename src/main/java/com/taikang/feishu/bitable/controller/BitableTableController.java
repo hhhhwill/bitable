@@ -13,8 +13,7 @@ import java.util.Map;
 @RequestMapping("/api/bitable/table")
 public class BitableTableController {
 
-    // 注入“同步服务”。
-    // 未来您可以注入一个更通用的 BitableTableService 来处理“创建空表”等功能
+
     @Autowired
     private DatabaseSyncService syncService;
 
@@ -58,9 +57,5 @@ public class BitableTableController {
     }
 
     // TODO: 在这里添加您未来的 "创建空表"、"删除表"、"获取表元数据" 等 API
-    // @PostMapping("/")
-    // public ResponseEntity<?> createEmptyTable(@RequestParam String appToken, @RequestParam String tableName) { ... }
 
-    // @DeleteMapping("/{appToken}/{tableId}")
-    // public ResponseEntity<?> deleteTable(@PathVariable String appToken, @PathVariable String tableId) { ... }
 }

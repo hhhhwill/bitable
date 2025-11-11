@@ -18,14 +18,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-
 @Service
 public class DatabaseSyncService {
-    // ... (代码逻辑保持不变, 但 import 已更新) ...
+
     private static final Logger log = LoggerFactory.getLogger(DatabaseSyncService.class);
 
     @Autowired
@@ -39,7 +39,6 @@ public class DatabaseSyncService {
 
     @Transactional
     public String syncTableToBitable(String appToken, String dbTableName, String newBitableTableName) throws Exception {
-
         log.info("开始读取数据库表结构: {}", dbTableName);
         List<AppTableField> fields = readTableFields(dbTableName);
         if (fields.isEmpty()) {
@@ -62,6 +61,9 @@ public class DatabaseSyncService {
         return newTableId;
     }
 
+    /**
+     * 辅助方法: 读取数据库表结构
+     */
     private List<AppTableField> readTableFields(String dbTableName) {
         return jdbcTemplate.execute((ConnectionCallback<List<AppTableField>>) con -> {
             List<AppTableField> fields = new ArrayList<>();
@@ -72,11 +74,12 @@ public class DatabaseSyncService {
                         String columnName = rs.getString("COLUMN_NAME");
                         int dataType = rs.getInt("DATA_TYPE");
 
+                        // --- 修正点 1: 保持您修改的 int 类型 (正确) ---
                         int fieldType = mapSqlTypeToBitableType(dataType);
 
                         fields.add(AppTableField.newBuilder()
                                 .fieldName(columnName)
-                                .type(fieldType)
+                                .type(fieldType) // .type(int) 是正确的
                                 .build());
                     }
                 }
@@ -88,6 +91,9 @@ public class DatabaseSyncService {
         });
     }
 
+    /**
+     * 辅助方法: 读取数据库数据
+     */
     private List<AppTableRecord> readTableData(String dbTableName, List<AppTableField> fields) {
         String sql = "SELECT * FROM " + dbTableName;
 
@@ -98,8 +104,19 @@ public class DatabaseSyncService {
                 for (AppTableField field : fields) {
                     String fieldName = field.getFieldName();
                     Object value = rs.getObject(fieldName);
+
                     if (value != null) {
-                        fieldMap.put(fieldName, value);
+
+                        if (field.getType() == 5L) {
+
+                            if (value instanceof Date) {
+                                fieldMap.put(fieldName, ((Date) value).getTime());
+                            } else {
+                                log.warn("无法转换的日期类型: {} for field {}", value.getClass(), fieldName);
+                            }
+                        } else {
+                            fieldMap.put(fieldName, value);
+                        }
                     }
                 }
                 records.add(AppTableRecord.newBuilder()
@@ -110,6 +127,9 @@ public class DatabaseSyncService {
         });
     }
 
+    /**
+     * 辅助方法: 映射 SQL 类型到飞书字段类型
+     */
     private int mapSqlTypeToBitableType(int sqlType) {
         switch (sqlType) {
             case Types.INTEGER:
@@ -118,9 +138,11 @@ public class DatabaseSyncService {
             case Types.DOUBLE:
             case Types.DECIMAL:
                 return 2;
+
             case Types.DATE:
             case Types.TIMESTAMP:
                 return 5;
+
             case Types.VARCHAR:
             case Types.CHAR:
             case Types.LONGVARCHAR:
@@ -129,6 +151,9 @@ public class DatabaseSyncService {
         }
     }
 
+    /**
+     * 辅助方法: 将同步信息存入本地数据库
+     */
     private void saveSyncInfoToDatabase(String appToken, String tableId, String dbTableName, String bitableTableName) {
         String sql = "INSERT INTO synced_tables (db_table_name, bitable_app_token, bitable_table_id, bitable_table_name) " +
                 "VALUES (?, ?, ?, ?)";

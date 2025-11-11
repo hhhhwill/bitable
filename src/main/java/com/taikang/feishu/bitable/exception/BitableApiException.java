@@ -17,8 +17,7 @@ public class BitableApiException extends RuntimeException {
      * @param logId 飞书 API 返回的请求 ID (用于排查问题)
      */
     public BitableApiException(int code, String msg, String logId) {
-        // 调用父类(RuntimeException)的构造函数, 将 msg 传进去
-        super(msg); 
+        super(msg);
         this.code = code;
         this.logId = logId;
     }

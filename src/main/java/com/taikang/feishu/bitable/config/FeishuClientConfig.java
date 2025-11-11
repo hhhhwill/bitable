@@ -9,7 +9,6 @@ import com.lark.oapi.Client;
 @Configuration
 public class FeishuClientConfig {
 
-    // 从 application.yml 中读取配置
     @Value("${feishu.app-id}")
     private String appId;
 

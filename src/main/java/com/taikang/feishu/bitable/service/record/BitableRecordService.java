@@ -25,7 +25,7 @@ public class BitableRecordService {
 
         final int PAGE_SIZE = 500;
         int totalSize = records.size();
-        BatchCreateAppTableRecordResp lastResp = null; // 用于返回最后一次的响应
+        BatchCreateAppTableRecordResp lastResp = null;
 
         for (int fromIndex = 0; fromIndex < totalSize; fromIndex += PAGE_SIZE) {
             int toIndex = Math.min(fromIndex + PAGE_SIZE, totalSize);
@@ -55,6 +55,6 @@ public class BitableRecordService {
         }
 
         log.info("全部 {} 条记录批量写入完成", totalSize);
-        return lastResp; // 返回最后一次的 API 响应
+        return lastResp;
     }
 }
