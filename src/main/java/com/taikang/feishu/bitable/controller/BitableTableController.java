@@ -1,11 +1,20 @@
 package com.taikang.feishu.bitable.controller;
 
+import com.lark.oapi.service.bitable.v1.model.BatchDeleteAppTableResp;
+import com.lark.oapi.service.bitable.v1.model.ListAppTableRespBody;
+import com.taikang.feishu.bitable.exception.BitableApiException;
 import com.taikang.feishu.bitable.service.sync.DatabaseSyncService; // 假设 DatabaseSyncService 也会被移动
+import com.taikang.feishu.bitable.service.table.BitableTableService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -13,9 +22,16 @@ import java.util.Map;
 @RequestMapping("/api/bitable/table")
 public class BitableTableController {
 
+    private static final Logger log = LoggerFactory.getLogger(BitableTableController.class);
 
     @Autowired
     private DatabaseSyncService syncService;
+
+    @Autowired
+    private BitableTableService tableService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     /**
      * 【API 2: 从数据库同步数据来创建数据表 (Table)】
@@ -56,6 +72,103 @@ public class BitableTableController {
         }
     }
 
-    // TODO: 在这里添加您未来的 "创建空表"、"删除表"、"获取表元数据" 等 API
 
+    @GetMapping("/list/{appToken}")
+    public ResponseEntity<?> listTables(
+            @PathVariable String appToken,
+            @RequestParam(required = false, defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String userAccessToken) {
+
+        try {
+            log.info("AppToken: {}", appToken);
+
+            ListAppTableRespBody respBody = tableService.listTables(appToken, userAccessToken, pageSize);
+            log.info("respBody: {}", respBody);
+            return ResponseEntity.ok(respBody);
+        } catch (Exception e) {
+            return buildErrorResponse(e);
+        }
+    }
+
+    @PatchMapping("/{appToken}/{tableId}")
+    public ResponseEntity<?> updateTable(
+            @PathVariable String appToken,
+            @PathVariable String tableId,
+            @RequestParam String newName,
+            @RequestParam(required = false) String userAccessToken) {
+
+        try {
+            tableService.updateTable(appToken, tableId, newName, userAccessToken);
+
+            // (可选) 更新 bitable_tables 日志表中的名称
+            jdbcTemplate.update("UPDATE bitable_tables SET table_name = ? WHERE table_id = ?", newName, tableId);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "数据表更新成功");
+            response.put("tableId", tableId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return buildErrorResponse(e);
+        }
+    }
+
+    /**
+     * [新功能] 删除一张数据表
+     */
+    @DeleteMapping("/{appToken}/{tableId}")
+    public ResponseEntity<?> deleteTable(
+            @PathVariable String appToken,
+            @PathVariable String tableId,
+            @RequestParam(required = false) String userAccessToken) {
+
+        try {
+            tableService.deleteTable(appToken, tableId, userAccessToken);
+
+            // (推荐) 从 bitable_tables 日志表中删除记录
+            jdbcTemplate.update("DELETE FROM bitable_tables WHERE table_id = ?", tableId);
+
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            return buildErrorResponse(e);
+        }
+    }
+
+    /**
+     * [新功能] 批量删除数据表
+     * (使用 POST 传递 body, 更安全)
+     */
+    @PostMapping("/batch-delete/{appToken}")
+    public ResponseEntity<?> batchDeleteTables(
+            @PathVariable String appToken,
+            @RequestBody List<String> tableIds, // 从请求体中获取 table ID 列表
+            @RequestParam(required = false) String userAccessToken) {
+
+        try {
+            BatchDeleteAppTableResp respBody = tableService.batchDeleteTables(appToken, tableIds, userAccessToken);
+
+            // (推荐) 从 bitable_tables 日志表中批量删除记录
+            String inSql = String.join(",", tableIds.stream().map(id -> "?").toArray(String[]::new));
+            jdbcTemplate.update(String.format("DELETE FROM bitable_tables WHERE table_id IN (%s)", inSql), tableIds.toArray());
+
+            return ResponseEntity.ok(respBody);
+        } catch (Exception e) {
+            return buildErrorResponse(e);
+        }
+    }
+
+    /**
+     * 统一的异常处理辅助方法
+     */
+    private ResponseEntity<Map<String, Object>> buildErrorResponse(Exception e) {
+        e.printStackTrace();
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("error", e.getMessage());
+
+        if (e instanceof BitableApiException) {
+            errorResponse.put("feishuCode", ((BitableApiException) e).getCode());
+            errorResponse.put("feishuLogId", ((BitableApiException) e).getLogId());
+        }
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+    }
 }

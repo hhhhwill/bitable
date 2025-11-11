@@ -155,10 +155,11 @@ public class DatabaseSyncService {
      * 辅助方法: 将同步信息存入本地数据库
      */
     private void saveSyncInfoToDatabase(String appToken, String tableId, String dbTableName, String bitableTableName) {
-        String sql = "INSERT INTO synced_tables (db_table_name, bitable_app_token, bitable_table_id, bitable_table_name) " +
+        // 使用新的 bitable_tables 表
+        String sql = "INSERT INTO bitable_tables (table_id, app_token, table_name, source_db_table_name) " +
                 "VALUES (?, ?, ?, ?)";
 
-        jdbcTemplate.update(sql, dbTableName, appToken, tableId, bitableTableName);
-        log.info("同步信息已保存到本地数据库: {}", dbTableName);
+        jdbcTemplate.update(sql, tableId, appToken, bitableTableName, dbTableName);
+        log.info("同步信息已保存到本地 bitable_tables 表: {}", dbTableName);
     }
 }
