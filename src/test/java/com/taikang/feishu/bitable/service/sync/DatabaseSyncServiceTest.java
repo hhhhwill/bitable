@@ -2,6 +2,7 @@ package com.taikang.feishu.bitable.service.sync;
 
 import com.lark.oapi.service.bitable.v1.model.AppTableField;
 import com.lark.oapi.service.bitable.v1.model.AppTableRecord;
+import com.lark.oapi.service.bitable.v1.model.BatchCreateAppTableRecordResp; // 1. 导入
 import com.lark.oapi.service.bitable.v1.model.CreateAppTableRespBody;
 import com.taikang.feishu.bitable.service.record.BitableRecordService;
 import com.taikang.feishu.bitable.service.table.BitableTableService;
@@ -11,8 +12,10 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor; // 2. 导入
 import org.springframework.jdbc.core.RowMapper;
 
 import java.sql.Timestamp;
@@ -35,6 +38,7 @@ import static org.mockito.Mockito.*;
  * @MockBean     会替换 Spring 上下文中的真实 Bean 为 Mockito 模拟对象。
  */
 @SpringBootTest
+@Import(DatabaseSyncService.class) // 显式导入我们要测试的 Service
 public class DatabaseSyncServiceTest {
 
     // 1. 注入我们要测试的目标类
@@ -60,7 +64,7 @@ public class DatabaseSyncServiceTest {
 
     // 4. 定义通用的模拟数据
     private List<AppTableField> mockFields;
-    private List<AppTableRecord> mockRecords;
+    private List<AppTableRecord> mockAppRecords; // 修正点：这是 readTableData 应该返回的最终结果
 
     /**
      * @BeforeEach 在每个 @Test 方法运行前执行
@@ -76,24 +80,28 @@ public class DatabaseSyncServiceTest {
         mockFields.add(AppTableField.newBuilder().fieldName("hire_date").type(5).build()); // 日期
 
         // 4.2 "告诉" Mockito: 当 jdbcTemplate.execute(ConnectionCallback) 被调用时,
+        //     (readTableFields 使用的是 execute)
         //     返回我们上面准备的 mockFields 列表。
-        //     (注意: 我们使用 any() 来匹配任意的 ConnectionCallback 参数)
         when(jdbcTemplate.execute(any(ConnectionCallback.class))).thenReturn(mockFields);
 
-        // --- 模拟 readTableData 的行为 ---
-        // 4.3 准备 "readTableData" 应该返回的模拟数据
-        //     注意: 我们在这里模拟数据库返回的原始数据
-        Map<String, Object> row1 = Map.of(
+
+        // --- 模拟 readTableData 的行为 (【关键修正点】) ---
+        // 4.3 准备 "readTableData" 应该返回的【最终结果】
+        //     (即，日期已经被转换为 Long)
+        mockAppRecords = new ArrayList<>();
+        Map<String, Object> recordFields = Map.of(
                 "id", 1,
                 "name", "张三",
-                "hire_date", new Timestamp(946684800000L) // 2000-01-01
+                "hire_date", 946684800000L // 2000-01-01 (已转换为毫秒)
         );
+        mockAppRecords.add(AppTableRecord.newBuilder().fields(recordFields).build());
 
-        // 4.4 "告诉" Mockito: 当 jdbcTemplate.query(sql, RowMapper) 被调用时,
-        //     返回包含 row1 的列表。
-        //     (注意: 我们使用 anyString() 匹配任意 SQL 语句, any(RowMapper.class) 匹配任意 RowMapper)
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class)))
-                .thenReturn(Collections.singletonList(row1));
+        // 4.4 "告诉" Mockito: 当 jdbcTemplate.query(sql, ResultSetExtractor) 被调用时,
+        //     (readTableData 使用的是 query(sql, ResultSetExtractor))
+        //     返回我们上面准备的 mockAppRecords 列表。
+        when(jdbcTemplate.query(anyString(), any(ResultSetExtractor.class)))
+                .thenReturn(mockAppRecords);
+
 
         // --- 模拟 bitableTableService 的行为 ---
         // 4.5 准备 "createTableWithFields" 应该返回的模拟响应
@@ -105,13 +113,19 @@ public class DatabaseSyncServiceTest {
         when(bitableTableService.createTableWithFields(
                 eq(TEST_APP_TOKEN),
                 eq(TEST_BITABLE_TABLE_NAME),
-                eq(mockFields) // 确保传入的字段列表是正确的
+                eq(mockFields)
         )).thenReturn(createTableRespBody);
 
+
         // --- 模拟 bitableRecordService 的行为 ---
-        // 4.7 "告诉" Mockito: 当 bitableRecordService.batchCreateRecords(...) 被调用时,
-        //     不执行任何操作 (void 方法)
-        doNothing().when(bitableRecordService).batchCreateRecords(anyString(), anyString(), anyList());
+        // 4.7 修正：batchCreateRecords 不是 void, 它返回一个 Resp 对象
+        BatchCreateAppTableRecordResp mockRecordResp = new BatchCreateAppTableRecordResp();
+        when(bitableRecordService.batchCreateRecords(
+                anyString(),
+                anyString(),
+                anyList()
+        )).thenReturn(mockRecordResp);
+
 
         // --- 模拟 saveSyncInfoToDatabase 的行为 ---
         // 4.8 "告诉" Mockito: 当 jdbcTemplate.update(...) (用于保存日志) 被调用时,
