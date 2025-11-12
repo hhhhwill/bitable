@@ -1,9 +1,8 @@
 package com.taikang.feishu.bitable.controller;
 
-import com.lark.oapi.service.bitable.v1.model.BatchDeleteAppTableResp;
-import com.lark.oapi.service.bitable.v1.model.ListAppTableRespBody;
+import com.lark.oapi.service.bitable.v1.model.*;
 import com.taikang.feishu.bitable.exception.BitableApiException;
-import com.taikang.feishu.bitable.service.sync.DatabaseSyncService; // 假设 DatabaseSyncService 也会被移动
+import com.taikang.feishu.bitable.service.sync.DatabaseSyncService;
 import com.taikang.feishu.bitable.service.table.BitableTableService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +32,123 @@ public class BitableTableController {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+
+    /**
+     * 【API 1: 手动创建数据表 (Table)】
+     * 调用此 API, 在【已存在】的多维表格文档中, 根据飞书 SDK (ReqTable) 结构创建一张新【数据表】。
+     *
+     * @param appToken    【必需】飞书 Bitable App Token (bascn...)
+     * @param rawReqBody 【必需】请求体 (JSON)
+     * @return 包含 tableId 的 JSON 响应
+     */
+    @PostMapping("/create/{appToken}")
+    public ResponseEntity<Map<String, Object>> createTable(
+            @PathVariable String appToken,
+            @RequestBody Map<String, Object> rawReqBody) {
+
+        String tableName = "Unknown";
+        try {
+            if (!rawReqBody.containsKey("table") || !(rawReqBody.get("table") instanceof Map)) {
+                throw new IllegalArgumentException("请求体中必须包含 'table' 键, 且其值必须是一个 JSON 对象");
+            }
+            Map<String, Object> tableMap = (Map<String, Object>) rawReqBody.get("table");
+
+            if (!tableMap.containsKey("name") || !(tableMap.get("name") instanceof String) || ((String)tableMap.get("name")).isEmpty()) {
+                throw new IllegalArgumentException("请求体中 'table.name' 字段 (即 tableName) 不能为空");
+            }
+            tableName = (String) tableMap.get("name");
+            log.info("name字段：{}", tableName);
+
+            // 5. 将整个 Map 传递给 Service
+            CreateAppTableRespBody respBody = tableService.createTable(
+                    appToken,
+                    rawReqBody
+            );
+            String newTableId = respBody.getTableId();
+
+            // 6. 登记到数据库
+            jdbcTemplate.update("INSERT INTO bitable_tables (table_id, app_token, table_name, source_db_table_name) " +
+                            "VALUES (?, ?, ?, ?)",
+                    newTableId, appToken, tableName, null);
+            log.info("手动创建的数据表已登记到 bitable_tables: {}", newTableId);
+
+            // 7. 构造成功响应
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "数据表创建成功");
+            response.put("appToken", appToken);
+            response.put("newTableId", newTableId);
+            String link = String.format("https://feishu.cn/base/%s?table=%s", appToken, newTableId);
+            response.put("quickAccessLink", link);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("创建数据表失败 (Controller), tableName: {}", tableName, e);
+            return buildErrorResponse(e);
+        }
+    }
+
+    /**
+     * 【API 3: (模拟) 批量创建数据表 - 增强版】
+     *
+     * @param appToken     【必需】飞书 Bitable App Token (bascn...)
+     * @param rawReqBodies 【必需】请求体 (JSON), 包含 ReqTable 的【列表】
+     * @return 包含成功和失败信息的响应
+     */
+    @PostMapping("/batch-create/{appToken}")
+    public ResponseEntity<Map<String, Object>> batchCreateTables(
+            @PathVariable String appToken,
+            @RequestBody List<Map<String, Object>> rawReqBodies) { // <-- 【重要】使用 ReqTable 列表
+
+        List<Map<String, Object>> successes = new ArrayList<>();
+        List<Map<String, Object>> failures = new ArrayList<>();
+
+        for (Map<String, Object> rawReqBody : rawReqBodies) {
+            String tableName = "Unknown";
+            try {
+                // 同样的手动校验
+                if (!rawReqBody.containsKey("table") || !(rawReqBody.get("table") instanceof Map)) {
+                    throw new IllegalArgumentException("请求体中必须包含 'table' 键");
+                }
+                Map<String, Object> tableMap = (Map<String, Object>) rawReqBody.get("table");
+                if (!tableMap.containsKey("name") || !(tableMap.get("name") instanceof String)) {
+                    throw new IllegalArgumentException("'table.name' 不能为空");
+                }
+                tableName = (String) tableMap.get("name");
+
+                // 调用 Service
+                CreateAppTableRespBody respBody = tableService.createTable(
+                        appToken,
+                        rawReqBody
+                );
+                String newTableId = respBody.getTableId();
+
+                // 登记数据库
+                jdbcTemplate.update("INSERT INTO bitable_tables ... (同上)",
+                        newTableId, appToken, tableName, null);
+
+                Map<String, Object> successDetail = new HashMap<>();
+                successDetail.put("tableName", tableName);
+                successDetail.put("newTableId", newTableId);
+                successes.add(successDetail);
+
+            } catch (Exception e) {
+                Map<String, Object> failureDetail = new HashMap<>();
+                failureDetail.put("tableName", tableName);
+                failureDetail.put("error", e.getMessage());
+                failures.add(failureDetail);
+            }
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", String.format("批量创建完成: %d 成功, %d 失败", successes.size(), failures.size()));
+        response.put("successes", successes);
+        response.put("failures", failures);
+        return ResponseEntity.ok(response);
+    }
+
+    // ... (sync
 
     /**
      * 【API 2: 从数据库同步数据来创建数据表 (Table)】
@@ -135,7 +252,6 @@ public class BitableTableController {
 
     /**
      * [新功能] 批量删除数据表
-     * (使用 POST 传递 body, 更安全)
      */
     @PostMapping("/batch-delete/{appToken}")
     public ResponseEntity<?> batchDeleteTables(
@@ -146,7 +262,7 @@ public class BitableTableController {
         try {
             BatchDeleteAppTableResp respBody = tableService.batchDeleteTables(appToken, tableIds, userAccessToken);
 
-            // (推荐) 从 bitable_tables 日志表中批量删除记录
+            // 从 bitable_tables 日志表中批量删除记录
             String inSql = String.join(",", tableIds.stream().map(id -> "?").toArray(String[]::new));
             jdbcTemplate.update(String.format("DELETE FROM bitable_tables WHERE table_id IN (%s)", inSql), tableIds.toArray());
 

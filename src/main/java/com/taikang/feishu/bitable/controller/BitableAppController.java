@@ -4,10 +4,13 @@ import com.lark.oapi.service.bitable.v1.model.App;
 import com.lark.oapi.service.bitable.v1.model.DisplayApp;
 import com.taikang.feishu.bitable.exception.BitableApiException;
 import com.taikang.feishu.bitable.service.app.BitableAppService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -17,8 +20,14 @@ import java.util.Map;
 @RequestMapping("/api/bitable/app")
 public class BitableAppController {
 
+    private static final Logger log = LoggerFactory.getLogger(BitableAppController.class); // 添加日志
+
     @Autowired
     private BitableAppService bitableAppService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
 
     /**
      * 【创建多维表格文档 (App)】

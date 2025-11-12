@@ -10,8 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.List;
 
+import com.google.gson.Gson;
 
 @Service
 public class BitableTableService {
@@ -19,6 +21,41 @@ public class BitableTableService {
 
     @Autowired
     private Client client;
+
+    private static final Gson gson = new Gson();
+
+    /**
+     * 【新方法】: 创建数据表
+     *
+     * @param appToken    App Token
+     * @param rawReqBody 飞书 SDK 的 ReqTable 对象, 包含所有自定义配置
+     * @return 响应体
+     * @throws Exception
+     */
+    public CreateAppTableRespBody createTable(String appToken, Map<String, Object> rawReqBody) throws Exception {
+
+        // 使用 GSON 将 Map -> JSON 字符串 -> 飞书 SDK 对象
+        String jsonString = gson.toJson(rawReqBody);
+        CreateAppTableReqBody reqBody = gson.fromJson(jsonString, CreateAppTableReqBody.class);
+
+        CreateAppTableReq req = CreateAppTableReq.newBuilder()
+                .appToken(appToken)
+                .createAppTableReqBody(reqBody)
+                .build();
+
+        log.info("开始创建数据表 (V2 - GSON 解析), appToken: {}, tableName: {}", appToken, reqBody.getTable().getName());
+
+        CreateAppTableResp resp = client.bitable().appTable().create(req);
+
+        if (!resp.success()) {
+            log.error("创建数据表 (V2) 失败, code:{}, msg:{}, reqId:{}",
+                    resp.getCode(), resp.getMsg(), resp.getRequestId());
+            throw new BitableApiException(resp.getCode(), resp.getMsg(), resp.getRequestId());
+        }
+
+        log.info("创建数据表 (V2) 成功, tableId: {}", resp.getData().getTableId());
+        return resp.getData();
+    }
 
     public CreateAppTableRespBody createTableWithFields(String appToken, String tableName, List<AppTableField> fields) throws Exception {
 

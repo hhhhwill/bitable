@@ -7,6 +7,7 @@ import com.taikang.feishu.bitable.exception.BitableApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate; // 1. 导入
 import org.springframework.stereotype.Service;
 
 
@@ -17,6 +18,9 @@ public class BitableAppService {
 
     @Autowired
     private Client client;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate; // 2. 注入 JdbcTemplate
 
     public App createBitableApp(String documentName, String folderToken, String userAccessToken) throws Exception {
         ReqApp reqApp = ReqApp.newBuilder()
@@ -49,6 +53,15 @@ public class BitableAppService {
 
         App app = resp.getData().getApp();
         log.info("创建多维表格文档成功, appToken: {}, url: {}", app.getAppToken(), app.getUrl());
+
+        try {
+            String sql = "INSERT INTO bitable_apps (app_token, app_name, app_url) VALUES (?, ?, ?)";
+            jdbcTemplate.update(sql, app.getAppToken(), app.getName(), app.getUrl());
+            log.info("新 App 已登记到本地 bitable_apps: {}", app.getAppToken());
+        } catch (Exception e_db) {
+            // 记录日志，但不抛出异常，确保主流程(创建App)的成功响应
+            log.error("飞书 App 创建成功，但写入本地 bitable_apps 表失败: {}", e_db.getMessage(), e_db);
+        }
 
         return app;
     }
@@ -91,6 +104,17 @@ public class BitableAppService {
 
         App copiedApp = resp.getData().getApp();
         log.info("复制多维表格成功, new AppToken: {}", copiedApp.getAppToken());
+
+        // --- 4. 解决方案：将复制的新 App 登记到本地数据库 ---
+        try {
+            String sql = "INSERT INTO bitable_apps (app_token, app_name, app_url) VALUES (?, ?, ?)";
+            jdbcTemplate.update(sql, copiedApp.getAppToken(), copiedApp.getName(), copiedApp.getUrl());
+            log.info("复制的新 App 已登记到本地 bitable_apps: {}", copiedApp.getAppToken());
+        } catch (Exception e_db) {
+            log.error("飞书 App 复制成功，但写入本地 bitable_apps 表失败: {}", e_db.getMessage(), e_db);
+        }
+        // --- 解决方案结束 ---
+
         return copiedApp;
     }
 
@@ -135,6 +159,11 @@ public class BitableAppService {
         if (newName != null && !newName.isEmpty()) {
             bodyBuilder.name(newName);
         }
+        // 如果 body 为空 (没有提供 newName)，则不执行任何操作
+        if (newName == null || newName.isEmpty()) {
+            log.warn("updateAppMetadata 调用，但未提供 newName, appToken: {}", appToken);
+            return;
+        }
 
         UpdateAppReq req = UpdateAppReq.newBuilder()
                 .appToken(appToken)
@@ -157,5 +186,15 @@ public class BitableAppService {
         }
 
         log.info("更新元数据成功, appToken: {}", appToken);
+
+        // --- 5. (可选) 解决方案：更新本地数据库中的名称 ---
+        try {
+            String sql = "UPDATE bitable_apps SET app_name = ? WHERE app_token = ?";
+            int rowsAffected = jdbcTemplate.update(sql, newName, appToken);
+            log.info("本地 bitable_apps 表中的名称已更新, appToken: {}, 影响行数: {}", appToken, rowsAffected);
+        } catch (Exception e_db) {
+            log.error("!!! 严重：飞书 App 元数据更新成功，但更新本地 bitable_apps 表失败: {}", e_db.getMessage(), e_db);
+        }
+        // --- 解决方案结束 ---
     }
 }
